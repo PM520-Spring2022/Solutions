@@ -1,0 +1,201 @@
+---
+title: "Coin tossing"
+author: "Paul M"
+date: "12/3/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Coin-tossing problem
+
+Let's define some global variables that we will use later
+
+```{r pressure, echo=TRUE}
+NTrialsPerExpt <- 2000   # how long should the sequence of 0s and 1s be
+set.seed(233)  # this sets the 'seed' of the random number generator, so that we get the same sequence of random numbers each time we run the code
+```
+
+Note that you can set `echo = FALSE` to prevent printing of the R code that generated the plot.
+
+Now we will define a couple of functions. We are going to look at two ways of generating a sequence of 0's and 1's and compare how quickly they run. (R has some strange behavior with loops, which this example will illustrate.)
+
+```{r sequences, echo=TRUE}
+# Here's a slow way of generating a sequence of 0's and 1's
+SlowGenerator <- function(Seq){
+  for (i in 1:length(Seq)){
+    p<-runif(1,0,1)   # a random number between 0 and 1
+    if (p<0.5){
+      Seq[i] <- 0
+    }else{       # Note that in R the closing } of the if loop must go on the same line as the 'else' statement
+      Seq[i] <- 1
+    }
+  }
+  return (Seq)
+}
+
+# And here's a faster way of generating a sequence of 0's and 1's
+FastGenerator<-function(Seq){
+  p <- runif(length(Seq),0,1)
+  Seq <- as.integer((p<0.5))
+  return (Seq)
+}
+```
+
+And now we'll see a couple of ways of counting how many runs there are: again, one slow way and one fast way.
+```{r counting, echo=TRUE}
+SlowHowManyRuns <- function(Seq){
+  RunCount <- 1
+  for (i in 2:length(Seq)){
+    if (Seq[i]!=Seq[i-1]){
+      RunCount <- RunCount+1
+    }
+  }
+  return (RunCount)
+}
+
+FastHowManyRuns <- function(Seq){
+  Count<-diff(Seq,lag=1)
+  Count<-abs(Count)
+  return (1+sum(Count))
+}
+```
+
+
+We will compare the speed of the two ways of generating sequences of 0s and 1s...
+```{r  TimeTrial}
+MySeq<-rep(0,NTrialsPerExpt)
+# Start the clock
+ptm <- proc.time()
+for (i in 1:1000){
+  MySeq1<-SlowGenerator(MySeq)}
+# Stop the clock
+proc.time() - ptm
+# Start the clock
+ptm <- proc.time()
+for (i in 1:1000){
+  MySeq2<-FastGenerator(MySeq)}
+# Stop the clock
+proc.time() - ptm
+```
+
+If you run the above for NTrialsPerExpt<-100000 you will see that the Fast way is 100 times faster than the Slow way. R hates loops!
+
+R has a great many useful built-in functions, which are often otimized to run bvery quickly. Let's try using the sample function and see how fast it is:
+```{r }
+
+ptm <- proc.time()
+for (i in 1:1000){
+  MySeq3<-sample(c(0,1),NTrialsPerExpt,replace=TRUE)}
+# Stop the clock
+proc.time() - ptm
+
+```
+
+
+We also need a function to find the length of a given run:
+```{r length}
+# function to find out how long the run starting at position 'WhereToStart' is
+LengthOfRun<-function(Seq,WhereToStart){
+  index <- WhereToStart
+  while (Seq[index+1]==Seq[index]){
+    index <- index+1
+  }
+  return(index-WhereToStart+1)
+}
+```
+
+Now we do the whole experiment NExpt times to find the distribution of the number of runs and length of first run. We will output how long it took to do this
+```{r expts}
+NExpts <- 1000
+MultipleExpts <- rep(0,NExpts)
+LengthOfRun1 <- rep(0,NExpts)
+# Start the clock
+ptm <- proc.time()
+for (i in 1:NExpts){
+  MySeq1 <- FastGenerator(MySeq)   # comment out this line or the next one to compare speeds
+  #MySeq1 <- SlowGenerator(MySeq)
+  MultipleExpts[i] <- FastHowManyRuns(MySeq1)
+  LengthOfRun1[i] <- LengthOfRun(MySeq1,1)
+}
+# How much time passed?
+cat("\nSimulations took ",proc.time()[1] - ptm[1]," seconds to run.")
+```
+
+Now let's look at the output. First we plot the distribution of observed number of runs
+and compare it to a Normal distribution
+```{r output}
+# generate the first plot and compare it to a normal distribution
+MyHist <- hist(MultipleExpts,main="Empirical Distribution of Number of Runs",xlab="Number of runs")
+multiplier <- MyHist$counts / MyHist$density
+NormalMean <- 1+(NTrialsPerExpt-1)/2   # the expected number of 'runs'
+# It should look like a Binomial (which itself looks like a Normal for large values of NTrialsPerExpt)
+NormalSD <- sqrt((NTrialsPerExpt-1)*0.5*0.5)
+myx <- seq(min(MultipleExpts), max(MultipleExpts), length.out= 100)
+normal <- dnorm(x = myx, mean = NormalMean, sd = NormalSD)
+#plot(MyHist$density)
+lines(myx, normal * multiplier[1], col = "blue", lwd = 2)
+```
+
+We can also do a formal test of normality, using something called the Shapiro-Wilk test
+```{r shapiro}
+shapiro.test(MultipleExpts)
+```
+We cannot reject the hypothesis that this data is normally distributed. (Note that this is not the same thing as saying that the data IS normally distributed.)
+
+
+Now let's compare it to a set of randomly generated binomial random variables (because we know it should be Binomial for any value of NTrialsPerExpt...
+
+```{r binomials}
+MyBinomials <- rbinom(NExpts,NTrialsPerExpt,0.5)    
+# to find the command 'rbinom' I Googled "Binomial Random Variables R"
+
+# compare the plots
+par(mfrow=c(1,2))  # this says we are going to draw the plots using 1 row and two columns
+MyHist <- hist(MultipleExpts,main="Empirical Distribution of Number of Runs",xlab="Number of runs")
+MyHist2 <- hist(MyBinomials)
+par(mfrow=c(1,1))
+```
+
+Now let's look at Q-Q plots -  if the distributions are the same, we should see straight lines
+```{r QQplots}
+par(mfrow=c(1,2))
+qqplot(MultipleExpts,MyBinomials,pch='.',main="Binomial Q-Q plot")
+qqnorm(MultipleExpts,pch='.')
+par(mfrow=c(1,1))   # go back to using a single plot per screen
+```
+These look pretty good!
+
+We know that the length of the first run is supposed to be a geometric random variable with p=0.5. So let's plot that as well and see if it agrees
+```{r geometric}
+RunHist <- hist(LengthOfRun1,main="Empirical distribution of the length of the first run",breaks=seq(0.5,max(LengthOfRun1)+0.5,1))
+ExpectedLengthDistribution<-numeric()
+for (i in 1:15){
+  ExpectedLengthDistribution[i]=0.5^i
+}
+plot(RunHist$density,main="line shows expected density (from geometric rv)")
+lines(ExpectedLengthDistribution)
+RunHist$density
+```
+This one doesn't look right. So what has gone wrong?
+
+Note that R has very many useful built-in functions. For example, there is a function called "sample" that would be very useful here. e.g.,
+
+```{r sample}
+sample(c(0,1),size=50,replace=TRUE)
+```
+Do we get the same speed differences if we use this function? (R's built-in functions are often optimized for speed)
+
+
+
+
+
+
+
+
+
