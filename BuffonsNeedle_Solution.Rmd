@@ -1,0 +1,78 @@
+---
+title: "Buffon's needle"
+author: "Paul M"
+date: "2/8/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Buffon's needle - solution
+
+This script allows you to estimate pi using the logic of Buffon's needle.
+
+As ever, remember to set the random number seed so that you can reproduce your output if you end up needing to hunt bugs. We also define some other control variables.
+```{r}
+set.seed(2053)   
+LineDistance <- 1  # The distance between the lines
+NumberOfTrials <- 50000    # how many needles to throw
+```
+
+
+We will compare performance for needles of different lengths, so now we define the range of lengths and set up a variable in which to store our pi estimates. It's generally best to 
+predeclare your memory if you can. Code can run slowly if you keep declaring new memory (e.g. using cbind or rbind)
+```{r}
+StartLength <- 0.1 # shortest needle considered
+EndLength <- 2 # longest needle considered
+StepSize <- 0.1 # the differences between the different lengths of needle we will consider
+OurLengths <- seq(from=StartLength,to=EndLength,by=StepSize)
+NumberOfLengths <- length(OurLengths) # How many needle lengths will we consider
+MyPi <- rep(0,NumberOfLengths)  # A place to store our esitmate of pi
+```
+
+Now we perform the Buffon's needle experiment for our range of needle lengths (one at a time)
+
+```{r}
+IterationCounter <- 0 # a variable we will use to keep track of where we are at for storing answers
+for (NeedleLength in OurLengths){
+  IterationCounter <- IterationCounter+1
+  NumberOfNeedlesThatCrossALine<-0   # this will count how often the needle crosses a line
+  # do the experiment - here's one way to do it
+  for (i in 1:NumberOfTrials){
+    # generate the angle at which the needle falls - R measure angles in radians, so for the code we need to use pi (a pre-defined variable in R)
+    Angle <- runif(1,0,pi)
+    Height=NeedleLength*sin(Angle)
+
+    # it will cross the a line with prob Height/LineDistance
+    PCrossLine <- Height / LineDistance
+    p <- runif(1)
+    if (p<PCrossLine){ NumberOfNeedlesThatCrossALine <- NumberOfNeedlesThatCrossALine + 1 }
+  }
+
+  ProportionOfPointsThatCrossLine <- NumberOfNeedlesThatCrossALine/NumberOfTrials
+  MyPi[IterationCounter]<-NeedleLength*2/(ProportionOfPointsThatCrossLine*LineDistance)
+  cat("\nNeedle length ",NeedleLength,": estimate of pi is ",MyPi[IterationCounter])
+  # and then do the math to produce you estimate of pi - yours to write
+
+}
+```
+
+
+Let's graph our estimates to see how they look
+```{r}
+plot(x=seq(from=StartLength,to=EndLength,by=StepSize),y=MyPi,main="Estimates of pi when lines are distance 1 apart",xlab="needle length",ylab="Estimated value of pi",pch="*")
+abline(pi,0,col="red",lty=2)
+```
+
+
+They look good for shorter needle lengths, but something goes wrong when the needle length is greater than 1. What is the problem there?
+
+If you are feeling fancy, you could write some code to plot your needles and the table as you perform the iterations.
+
+
+
