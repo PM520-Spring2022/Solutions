@@ -1,0 +1,49 @@
+---
+title: "ConditionedExpos"
+author: "Paul M"
+date: "12/4/2020"
+output: html_document
+---
+
+Our task here is to produce exponential random variables, using the Universality of the Uniform, and conditioned on them being >y, for some y. We wil use a rejection method to make sure they satisfy the latter condition.
+
+Set-up your global variables...
+```{r}
+set.seed(999)  # remember to set your random number seed
+
+# set up the variables we need for this task
+NumberOfRVs <- 10000  # How many rvs we want to generate
+y <- 1    # the value y such that we condition on x>y
+lambda <- 1   # the exponential parameter
+OurExpos <- rep(0,NumberOfRVs)  # a place to put the answers
+```
+
+
+Now generate Uniform rvs and transform them to become exponentials. Then check whether they are >y.
+(So write a while loop to check that condition, for example)
+```{r}
+# Set up a loop to generate the rvs
+for (i in 1:NumberOfRVs){
+  
+  # generate a unirm
+  u<-runif(1,0,1)
+
+  # Transform u to get an expo rv
+  ConditionedExpRV<- (-1/lambda)*log(u)
+  # It is >y?
+  while (ConditionedExpRV < y){
+    u<-runif(1,0,1)
+    ConditionedExpRV<- (-1/lambda)*log(u)
+  }
+  # When you leave this loop you should have an expo(lambda) rv that is >y
+  
+  #Store the value of ConditionedExpRV
+  OurExpos[i] <- ConditionedExpRV
+}
+```
+
+Now construct the plots you were asked for
+```{r}
+hist(OurExpos,breaks=25,main=c("Exponentials conditioned on being bigger than ",y),col="red",prob=TRUE)
+curve(dexp(x-y, rate=lambda), add=TRUE,lwd=2)
+```
