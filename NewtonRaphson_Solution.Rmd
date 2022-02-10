@@ -1,0 +1,119 @@
+---
+title: "NR"
+author: "Paul M"
+date: "12/7/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+First, we define some functions to work with
+```{r }
+F1<-function(x){
+		return(c(x^2,2*x))
+}
+
+F2<-function(x){
+		return(c(sin(x),cos(x)))
+}
+
+F3<-function(x){
+	y<-(x-2)^3-6*x
+	deriv<-3*(x-2)^2-6
+	return(c(y,deriv))
+}
+
+F4<-function(x){
+	return(c(cos(x)-x,-1*sin(x)-1))
+}
+```
+
+Now we write a function to perform the Newton-Raphson method...
+```{r}
+NewtonRaphson <- function(func,StartingValue,Tolerance,MaxNumberOfIterations){
+	Deviation <- 1000   # an arbitrary big number
+	i <- 0
+	X <- StartingValue
+	Y <- func(X)[1]    
+	segments(X,0,X,Y,lty=2,lwd=2,col="blue")
+	text(X-0.2,-1.2,"X1",cex=0.75)
+	
+	#Set up a while loop until we hit the required target accuracy or the max. number of steps
+	while ((i<MaxNumberOfIterations) && (Deviation>Tolerance))
+	{
+		# Find the next X-value using Newton-Raphson's formula
+		Z <- func(X)
+		NewX <- X-Z[1]/Z[2]
+
+		if ((Z[1]=="NaN") || (Z[2]=="NaN")){
+			cat("Function or derivative not defined error.\n")
+			break
+		}
+
+		# annotate
+		segments(X,Y,NewX,0,lty=2,lwd=2,col="blue")
+		segments(NewX,0,NewX,func(NewX)[1],lty=2,lwd=2,col="blue")
+		#browser()
+		text(NewX-0.2,-1.2,paste("X",i+2,sep=""),cex=0.75)
+
+		# calculate accuracy: |f(x)-0|
+		X <- NewX
+		Y <- func(X)[1]    
+		Deviation <- abs(Y)
+
+		i <- i+1
+		cat(paste("\nIteration ",i,":   X=",X,"  Y=",Y))
+	}
+
+	# output the result
+	if (Deviation<Tolerance){
+		cat(paste("\nFound the root point: ",X, "after ", i, "iterations"))
+		}else{
+		cat(paste("\nConvergence failure. Deviation: ",Deviation, "after ", i, 	"iterations"))}
+}
+```
+
+
+Now let's run the required analyses.
+
+First $f(x)=x^2$
+```{r}
+curve(x^2,-3,10)
+NewtonRaphson(F1,8,1e-3,40)
+```
+
+Then $f(x)=(x-2)^3-6*x$:
+```{r}
+curve((x-2)^3-6*x,-5,10)
+NewtonRaphson(F3,8,1e-3,40)
+```
+
+Are there any starting values for which it struggles with that function?
+
+Next we try $f(x)=sin(x)$:
+```{r}
+curve(sin(x),-5,20)
+NewtonRaphson(F2,8,1e-3,40)
+
+curve(sin(x),-5,200)
+NewtonRaphson(F2,7.86,1e-3,40)
+```
+
+The issue there is that the root you find depends upon the point you start at (in a fairly unpredictable way). We will exploit this fact later to draw some art.
+Note also that the second plot of sin(x) looks rather weird. What is going on there?
+
+
+Now for $f(x)=cos(x)-x$:
+```{r}
+curve(cos(x)-x,-20,20)
+NewtonRaphson(F4,8,1e-3,40)
+abline(h=0)
+
+curve(cos(x)-x,-200,200)
+NewtonRaphson(F4,8,1e-3,40)
+abline(h=0)
+```
+
+From a distance this function looks well-behaved (2nd plot), but if we zoom in we see that it is a bit like a set of stairs, and your path to the root can be rather strange is you happen to start at a point at which the tangent is nearly horizontal.
