@@ -1,0 +1,96 @@
+---
+title: "Regression Via SA"
+author: "Paul M"
+date: "3/2/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This algorithm fits a regression using optimization. I am going to show an example that uses a 
+built-in R simulated annealing algorithm in the R package "stats"
+```{r libs}
+library(stats)
+```
+
+We'll start by trying it on linear regression and then see how far we can push it.
+start by reading the data and using R's bult-in regression function to see what the 
+answer should be:
+```{r}
+filestr<-sprintf("RegressionInput.txt")
+Coordinates<-read.table(filestr,header=F)
+Residuals<-Coordinates[,1]
+Reg<-lm(Coordinates[,2]~Coordinates[,1])
+plot(Coordinates,pch=46,main="Data with regression line from lm()")
+abline(Reg$coefficients[1],Reg$coefficients[2],col="blue",lty=2)
+print(Reg)
+```
+
+So we should get an intercept of  53.915 and a slope of 1.952
+
+First we need to define the functions that will calculate the sum of the residuals for any given fitted line or cubic curve. 
+
+The arguments are as follows:
+* Coords: the coordinates of the points we are trying to put a line through
+* inter: the intercept
+* slp: the slope
+* quadratic: the quadratic coefficient
+* cubic: the cubic coefft.
+(We will be fixing the last two to 0 for the linear regression.)
+
+```{r SoS}
+CalculateLinearSoS <- function(params){
+  inter <- params[1]
+  slp <- params[2]
+	SS <- 0
+	Residuals <- Coordinates[,2]-(inter+slp*Coordinates[,1])
+	SqResiduals <- Residuals*Residuals
+	SS <- sum(SqResiduals)
+	return (SS)
+}
+
+CalculateCubicSoS <- function(params){
+  inter <- params[1]
+  slp <- params[2]
+  quadratic <- params[3]
+  cubic <- params[4]
+	SS <- 0
+	Residuals <- Coordinates[,2]-(inter+slp*Coordinates[,1]+quadratic*Coordinates[,1]^2+cubic*Coordinates[,1]^3)
+	SqResiduals <- Residuals*Residuals
+	SS <- sum(SqResiduals)
+	return (SS)
+}
+```
+
+Now let's try fitting a line using simulated annealing using the function "optim", from the "stats" library, which has a simulated annealing option (along with many others)
+```{r SA}
+SAresult <- stats::optim(fn = CalculateLinearSoS, par = c(0,0), method = "SANN", control = list(tmax = 500, reltol = 0.1, temp = 50, trace = TRUE))
+print(SAresult)
+plot(Coordinates,pch=46,main="SA Regression result (red) and lm() fitted line (blue)")
+abline(Reg,col="blue",lty=2)
+curve(SAresult$par[1]+SAresult$par[2]*x,col="red",add=TRUE)
+```
+We see that we get almost identical results.
+
+
+Now let's try the cubic data.
+```{r}
+filestr<-sprintf("CubicRegressionInput.txt")
+Coordinates<-read.table(filestr,header=F)
+Residuals<-Coordinates[,1]
+SAresult <- stats::optim(fn = CalculateCubicSoS, par = c(0,0,0,0), method = "SANN", control = list(tmax = 500, reltol = 0.1, temp = 50, trace = TRUE))
+print(Reg)
+plot(Coordinates,pch=46,main="SA Cubic Regression result")
+curve(SAresult$par[1]+SAresult$par[2]*x+SAresult$par[3]*x^2+SAresult$par[4]*x^3,col="red",add=TRUE)
+
+```
+
+Again, we appear to get a good fit.
+
+Further work: 
+* Can you write a single sum of squares function that could handle fitting a polynomial of degrees both 1 and 3?).
+* How is performance affected if you change some of the parameters for the simulated annealing algorithm?
