@@ -1,0 +1,253 @@
+---
+title: "RegressionFitter"
+author: "Paul M"
+date: "2/25/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Solution to Regression Problem
+
+This algorithm is a partial solution to fitting a regression using optimization.
+for linear regression we could iterate the following steps:
+
+1. Test whether the sum of squared residuals [SS] descreases as you increase(decrease)the slope
+1a. Increase (or decrease) the slope in steps of size epsilon until the SS stops decreasing.
+2. Now test whether the SS decreases as we increase or decrease the intercept.
+2a. Increase (or decrease) the slope in steps of size 100*epsilon until the SS stops decreasing.
+3. Go back to 1.
+
+So this is like a steepest ascent algorithm in which we force consecutive directions to be perpendicular.
+
+The same idea would works, in principle, for cubic regression, but now we cycle through changing the intercept, slope, squared term, and cubic term.
+
+This partial solution completes just one such cycle, but seems to work pretty well. 
+
+First let's get set up...
+```{r}
+#filestr<-sprintf("RegressionInput.txt")
+filestr<-sprintf("CubicRegressionInput.txt")
+Coordinates<-read.table(filestr,header=F)
+Residuals<-Coordinates[,1]
+Reg<-lm(Coordinates[,2]~Coordinates[,1])
+
+DegreeOfRegression<-3  # what sort of regression do we want? 1=linear; 2=quadratic; 3=cubic
+
+outfile1<-file("RegressionSteps.txt")
+
+#How many points do we have
+NumberOfPoints<-length(Coordinates[1,])
+```
+
+And now run the algorithm. It takes a while because of all the plotting.
+```{r}
+
+plot(Coordinates,pch=46)
+
+# Pick an arbitrary place to start - we might also choose a random slope and intercept
+#initialize intercept
+intercept<- -2000
+#initialize slope
+slope<-0
+quadraticterm<-0
+cubicterm<-0
+
+# jiggle factors - these controls how much we change the slope by at each step
+# the first element is for the intercept, the second is for the linear term, the third is for the quadratic term, etc.
+epsilon<-rep(0,4)
+epsilon[1]<-1
+epsilon[2]<-0.1
+epsilon[3]<-0.02
+epsilon[4]<-0.01
+
+# this function will calculate the sum of squared residuals
+CalculateSoS<-function(Coords,slp,inter,quadratic,cubic){
+	SS<-0
+	Residuals<-Coords[,2]-(inter+slp*Coords[,1]+quadratic*Coords[,1]^2+cubic*Coords[,1]^3)
+	SqResiduals<-Residuals*Residuals
+	SS<-sum(SqResiduals)
+	return (SS)
+}
+
+# keep track of by how much we have reduced the Sum of squared residuals
+SSred<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+
+# record the starting configuration
+Recorder<-cbind(intercept,slope,quadraticterm,cubicterm,SSred)
+cat(paste("starting configuration",intercept,slope,SSred))
+
+# Do least sum of squares fit using steepest-ascent-like algorithm
+count<-0
+
+while (SSred>0.1){
+    count<-count+1
+	# what is the current SS resids?
+	currentSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+
+	if (DegreeOfRegression>2){
+		# test the coefficient of the cubic term
+		cubicterm<-cubicterm+epsilon[4]
+		newSS1<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		cubicterm<-cubicterm-2*epsilon[4]
+		newSS2<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		cubicGradient<-(newSS1-newSS2)/(2*epsilon[4])
+		cubicterm<-cubicterm+epsilon[4]
+
+		# now move in this direction until the SS stops decreasing
+		SSdecrease <- 1
+		#cat(paste("\nnew direction",count))
+		#Move in the right direction
+		while ((SSdecrease>0)&&(count<100)){
+			OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+			if (newSS1>newSS2)
+				cubicterm<-cubicterm-epsilon[4]
+			else
+				cubicterm<-cubicterm+epsilon[4]
+			NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+			SSdecrease<-OldSS-NewSS
+			cat(paste("\nchanging cubic: ",intercept,slope,quadraticterm,cubicterm,OldSS,NewSS,SSred))#
+			Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+			# pause for a bit
+			Start.Time<-Sys.time()
+			while (Sys.time()<Start.Time+0.1){}
+			plot(Coordinates,pch=46,main="My Regression")
+			abline(Reg)
+			curve(intercept+slope*x+quadraticterm*x^2+cubicterm*x^3,col="red",add=TRUE)
+		}
+		OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		if (newSS1>newSS2)
+			cubicterm<-cubicterm+epsilon[4]
+		else
+			cubicterm<-cubicterm-epsilon[4]
+		NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+	}
+
+
+	if (DegreeOfRegression>1){
+		# test the coefficient of the quadratic term
+		quadraticterm<-quadraticterm+epsilon[3]
+		newSS1<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		quadraticterm<-quadraticterm-2*epsilon[3]
+		newSS2<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		QuadraticGradient<-(newSS1-newSS2)/(2*epsilon[3])
+		quadraticterm<-quadraticterm+epsilon[3]
+
+		# now move in this direction until the SS stops decreasing
+		SSdecrease <- 1
+		#cat(paste("\nnew direction",count))
+		#Move in the right direction
+		while ((SSdecrease>0)&&(count<100)){
+			OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+			if (newSS1>newSS2)
+				quadraticterm<-quadraticterm-epsilon[3]
+			else
+				quadraticterm<-quadraticterm+epsilon[3]
+			NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+			SSdecrease<-OldSS-NewSS
+			cat(paste("\nchanging quadratic: ",intercept,slope,quadraticterm,cubicterm,OldSS,NewSS,SSred))#
+			Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+		}
+		OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		if (newSS1>newSS2)
+			quadraticterm<-quadraticterm+epsilon[3]
+		else
+			quadraticterm<-quadraticterm-epsilon[3]
+		NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+	}
+
+
+	# test the slope
+	slope<-slope+epsilon[2]
+	newSS1<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+	slope<-slope-2*epsilon[2]
+	newSS2<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+	SlopeGradient<-(newSS1-newSS2)/(2*epsilon[2])
+	slope<-slope+epsilon[2]
+
+	# now move in this direction until the SS stops decreasing
+	SSdecrease <- 1
+	#cat(paste("\nnew direction",count))
+	#Move in the right direction
+	while ((SSdecrease>0)&&(count<100)){
+		OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		if (newSS1>newSS2)
+			slope<-slope-epsilon[2]
+		else
+			slope<-slope+epsilon[2]
+		NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		SSdecrease<-OldSS-NewSS
+		cat(paste("\nchanging slope: ",intercept,slope,quadraticterm,cubicterm,OldSS,NewSS,SSred))#
+		Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+	}
+	OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+	if (newSS1>newSS2)
+		slope<-slope+epsilon[2]
+	else
+		slope<-slope-epsilon[2]
+	NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+	#cat(paste("\nchanging slope. New slope: ",intercept,slope,OldSS,NewSS))#
+	Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+
+
+	# test the intercept
+	intercept<-intercept+epsilon[1]
+	newSS1<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+	intercept<-intercept-2*epsilon[1]
+	newSS2<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+	InterceptGradient<-(newSS1-newSS2)/(2*epsilon[1])
+	intercept<-intercept+epsilon[1]
+	SSdecrease<-1
+	#Move in the right direction
+	while ((SSdecrease>0)&&(count<100)){
+		OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		if (newSS1>newSS2)
+			intercept<-intercept-epsilon[1]
+		else
+			intercept<-intercept+epsilon[1]
+		NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+		SSdecrease<-OldSS-NewSS
+		cat(paste("\nchanging intercept: ",intercept,slope,quadraticterm,cubicterm,OldSS,NewSS,SSred))#
+		Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+	}
+	OldSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+	if (newSS1>newSS2)
+		intercept<-intercept+epsilon[1]
+	else
+		intercept<-intercept-epsilon[1]
+	NewSS<-CalculateSoS(Coordinates,slope,intercept,quadraticterm,cubicterm)
+
+	#cat(paste("\nChanging intercept. New int: ",intercept,slope,OldSS,NewSS))#
+	Recorder<-rbind(Recorder,cbind(intercept,slope,quadraticterm,cubicterm,NewSS))
+	SSred<-currentSS-NewSS
+	# pause for a bit
+	Start.Time<-Sys.time()
+	while (Sys.time()<Start.Time+0){}
+	plot(Coordinates,pch=46,main="My Regression")
+	abline(Reg)
+	curve(intercept+slope*x+quadraticterm*x^2+cubicterm*x^3,col="red",add=TRUE)
+
+
+}
+write(Recorder[,],outfile1,ncolumns=DegreeOfRegression+2) ## output our path
+close(outfile1)
+```
+
+Now store the final plot to file...
+```{r}
+str<-sprintf("RegressionFitter1_Output.pdf")
+pdf(str)
+op <- par(mfrow = c(1,1)) # 2 x 2 pictures on one plot
+plot(Coordinates,pch=46,main="My Regression")
+abline(Reg)
+curve(intercept+slope*x+quadraticterm*x^2+cubicterm*x^3,col="red",add=TRUE)
+#plot(Coordinates,pch=46,main="My Regression",abline(intercept,slope))
+#abline(intercept,slope)
+dev.off()
+```
