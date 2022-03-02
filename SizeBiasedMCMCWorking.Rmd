@@ -1,0 +1,138 @@
+---
+title: "SizeBiasedMCMCWorking"
+author: "Paul M"
+date: "1/29/2021"
+output: pdf_document
+---
+# Size-biased sampling via MCMC sampling
+
+Let's define a distribution to try it on
+```{r}
+Exponential <- function(dRate,x){
+	return (dRate*exp(-dRate*x))
+}
+```
+
+Here's another, a truncated normal:
+```{r}
+TruncatedNormal<-function(dMean,x){
+  y<- -1
+  while (y<0){y<-dnorm(x,dMean,1)}
+  return (y)   # assume an SD of 1, and truncation at 0 for now
+}
+```
+
+
+Here's the code for Size-biased MCMC. We pass it the following arguments:
+Density: the name of the function that defines our density
+Param1: the parameter of the density function (we assume it has just one parameter)
+NoOfIts: how many iterations to run
+StepSize: at each iteration we will propose a move drawn from an unif[iStepSize,StepSize] rv 
+LowRange: The low end of the interval over which we will sample
+HighRange: The high end of the interval over which we will sample
+
+```{r SBMCMC}
+SizedBiasedMCMC<-function(Density, Param1,NoOfIts,StepSize,LowRange,HighRange){
+	 #start somewhere
+	 x <- runif(1,LowRange,HighRange)
+	 Accepteds <- vector(mode="double",length=NoOfIts)
+
+	 # do the MCMC
+	 for (i in 1:NoOfIts){
+
+	 	# propose new x
+	 	xprime <- x + runif(1,-StepSize,StepSize)
+		if (xprime > HighRange)
+			xprime <- HighRange-(xprime-HighRange) # this treats the edge of the range as a 'reflecting boundary'.
+		if (xprime< LowRange)
+			xprime <- LowRange-(xprime-LowRange) # this treats the edge of the range as a 'reflecting boundary'.
+
+		# Calculate Hastings Ratio - the Q term will disappear
+		Paccept <- min(1,(xprime*Density(Param1,xprime))/(x*Density(Param1,x)))
+
+		# move or not?
+		p<- runif(1)
+		if (p<Paccept)
+		{
+			x <- xprime
+		}
+		# update the vector of states
+		Accepteds[i] <- x
+	 }
+	return (Accepteds)
+}
+```
+
+Now we try it out. first, on the expo. We will try it twice and then compare the outputs.
+The first run:
+```{r run1}
+set.seed(543)
+SB<-SizedBiasedMCMC(Exponential,1,200000,1,0,10)
+plot(SB,main="size-biased expo: run 1",type='l')
+H <- hist(SB)
+plot(H$mids,H$density,pch='.',cex=3,main="run 1 as density")
+curve(x*exp(-x),add=TRUE,col="blue")
+```
+
+We see a good match to the theoretical density
+
+The second run:
+```{r run2}
+SB2<-SizedBiasedMCMC(Exponential,1,200000,1,0,10)
+plot(SB2,main="size-biased expo: run 2",type='l')
+H2<-hist(SB2) 
+plot(H2$mids,H2$density,pch='.',cex=3,,main="run 2 as density",)
+curve(x*exp(-x),add=TRUE,col="blue")
+```
+
+Again, we see a good match to the theoretical density.
+
+
+We need to check whether the process is stationary. 
+We will do that using Gelman's diagnostics.
+You will need to install the coda package if you don't have it already
+```{r coda}
+#install.packages("coda")
+library("coda")
+plot(SB,type="l")  # an example of its plots
+
+# convert to mcmc objects, with a burn-in
+MCMC1<-mcmc(SB,start=1000)
+MCMC2<-mcmc(SB2,start=1000)
+
+# combine different mcmc chain objects to an mcmc list.
+Combined<-mcmc.list(list(MCMC1,MCMC2))
+
+# gelman functions are
+gelman.plot(Combined) # for plots
+gelman.diag(Combined) # for diagnostic values
+```
+
+Which looks great. In real life, they will seldom look that good!
+
+Another diagnostic that is used is "Effective Sample Size". This is a measure of how many independent samples you can find in your run. You want to make sure this number is big enough to allow for effective inference about the distribution. There's a version of this in the "coda" package (called effectiveSize(x)), but here I'll use one from a package called "LaplacesDemon", which is a library of generally useful Bayesian inference tools (and doesn't require me to convert everything into MCMC objects).
+```{r ESS}
+#install.packages("LaplacesDemon")
+library("LaplacesDemon")
+(ess <- ESS(SB))
+```
+We see that our run of 10K iterations was equivalent to about 5K independent samples. Which is plenty!
+
+Let's see what happens if we make the range of sizes for the transition kernel much smaller.
+We will try proposing new values using x' = x +/- Unif[0,0.1] rather than x' = x +/- Unif[0,1]
+
+```{r }
+SB3 <- SizedBiasedMCMC(Exponential,1,200000,0.1,0,10)
+(ess <- ESS(SB3))
+```
+
+Now we have only 61 effectively independent samples. This is because the samples are now quite correlated, so we now get a very poor approximation of the correct, size-biased distribution:
+```{r}
+plot(SB3,main="size-biased expo: run 2",type='l')
+H3<-hist(SB3) 
+plot(H3$mids,H3$density,pch='.',cex=3,,main="run 2 as density",)
+curve(x*exp(-x),add=TRUE,col="blue")
+```
+
+
+Some MCMC packages output this sort of thing automatically (e.g. JAGS, which we will meet in week 10).

@@ -1,0 +1,78 @@
+---
+title: "MetropolisForNormalsWorking"
+author: "Paul M"
+date: "1/29/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+Here's the code for the Metropolis algorithm:
+
+We assume we pass it the following parameters:
+
+* "Mean": the mean of the normal distribution from which we wish to sample
+
+* "SD": the std. dev. of the normal distribution from which we wish to sample
+
+* "EndPt": We will start the algorithm at a point chosen uniformly at random in the range  [-EndPt, +EndPt] 
+
+* "NumberOfIts": We will run the Metrop algorithm for NumberOfIts iterations
+
+```{r Metrop}
+MHNormal <- function(Mean,SD,EndPt,NumberOfIts){ # Mean and SD are the Mean and Std. dev. of the Normal,
+	#We simulate over the range [-EndPt, +EndPt] and run NumberOfIts iterations.
+	NormalXs <- rep(-9,NumberOfIts)  # declare a vector to store the x-values we generate during the course of the algorithm
+	# you need to start somewhere: sample a random number, x, between +EndPt and -EndPt
+	x = runif(1, -EndPt, EndPt)
+
+		for (i in 1:NumberOfIts){    # each iteration performs one step of the MCMC process
+		# propose a new x-value (xprime) by adding a Unif(-0.5,0.5) (say) random variable to the current value
+	  if (runif(1)<0.9){
+	    xprime  <-  x + runif(1,0,1)
+	  }else{
+	    xprime  <-  x - runif(1,0,1)
+	  }
+		# decide whether to move to the new value - 
+			# Calculate Metropolis term (the ratio of the likelihoods of the two points, i.e., H <- f(x')/f(x))
+			H <- min(1,dnorm(xprime,Mean,SD)/dnorm(x,Mean,SD))
+			p <- runif(1,0,1) # generate a random number and then decide whether or not to move to the new value
+		if (p<H){ 
+			x <- xprime      # move to x'
+		} # we dont need an else, since we just keep the existing x in that case
+			
+			# update the vector that you keep each iterations x-value inNormalXs
+			NormalXs[i] <- x
+		
+		# every now and again, plot a histogram of the accepted values
+    HistBars  <-  seq(-EndPt, EndPt, 0.1)
+		}
+	 hist(NormalXs,breaks=HistBars) 
+	return (NormalXs)  # returns the vector of x-values
+}
+```
+
+Let's test it:
+```{r test}
+set.seed(572)
+MyMH <- MHNormal(0,1,10,20000)
+```
+
+Let's look at what we got:
+```{r LookSee}
+plot(MyMH,type='l')
+plot(MyMH[1:1000],type='l')
+acf(MyMH,lag.max=200)
+```
+
+Is it normal? Test using a QQ plot
+```{r qq}
+qqnorm(MyMH,pch='.')
+abline(0,1,col="red",lty=2)
+qqnorm(MyMH[-(1:1000)],pch='.')
+abline(0,1,col="red",lty=2)
+```
+
+
+Note that if we remove the first 1000 iterations it starts to look more normal. This is a common feature of metropolis algorithms (and of MCMC). Initially, the points are influenced by where you happened to start from. So we typically remove a "burn-in" period before we start to sample. Formally, this is so that we are only sampling values once the Markov chain reaches "stationarity".
