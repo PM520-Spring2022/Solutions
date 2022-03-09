@@ -1,0 +1,268 @@
+---
+title: "MVNormals"
+author: "Paul M"
+date: "3/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a relatively straightforward MCMC example based on the following http://www.people.fas.harvard.edu/~plam/teaching/methods/convergence/convergence_print.pdf
+
+It assumes we have some bivariate normal data for which we want to estimate the means.
+For convenience, for the purposes of this example, we will assume we know the variance-covariance structure.
+We will also assume an (improper) uniform prior for the means.
+
+First, load some libraries and do some other book-keeping:
+```{r prep}
+library(mvtnorm)
+library(mcmc)
+library(coda)
+
+# how many iterations do we want in our MH-MCMC process?
+total.iterations <- 20000
+
+op<-par() # preserve your current graphics parameter settings (we will be changing them later)
+
+set.seed(5436)  # to make our results reproducible
+```
+
+Now we generate some test data and plot it. We will do one case at a time, starting with the first ...
+```{r data}
+mu.vector <- c(3, 1)    # the vector of means for the multi-variate normal
+
+# Here are three different bivariate normals to try to work with:
+variance.matrix <- cbind(c(1, 0), c(0, 4))   # the variance-covariance matrix for the multi-variate normal
+
+# Now generate one hundred samples from that distribution:
+our.data<-rmvnorm(n=100,mean=mu.vector,sigma=variance.matrix)
+plot(our.data,main="sampled data")
+```
+
+Now we define our MCMC function:
+```{r mcmc_def}
+do.MHMCMC <- function(number.of.iterations){
+  # start our MH-MCMC process off from somewhere
+  current.mu <- runif(2,0,4)
+  
+  # define a vector to store the output of the MH-MCMC process
+  posterior.mu <- mat.or.vec(number.of.iterations,2)
+  
+  for (i in 1:number.of.iterations){
+    #apply the proposal/transition-kernel to the current state to get the proposed new state
+    proposed.mu<-current.mu+runif(2,-0.1,0.1)
+
+    # calculate hastings ratio
+    # first we need the density of the data under the new and old values for the mean - note that we work with logs!
+    pdf.before<-sum(log(dmvnorm(our.data,mean=current.mu,sigma=variance.matrix)))
+    pdf.after<-sum(log(dmvnorm(our.data,mean=proposed.mu,sigma=variance.matrix)))
+    # our proposal kernel is symmetric, and uses uniform priors, so the Hastings ratio will be as follows:
+    hr <- exp(pdf.after-pdf.before)
+    
+    # do we accept the transition?
+    p <- runif(1)
+    #browser()
+    if (p<hr){
+      # accept
+      current.mu <- proposed.mu
+    }else{
+      #reject - no need to do anything here
+    }
+    
+    # store the current iteration
+    posterior.mu[i,] <- current.mu  
+  }
+  
+  return (posterior.mu)
+  
+}
+```
+
+Let's run it three times to enable comparison of results
+```{r runs}
+mh.draws1 <- do.MHMCMC(total.iterations)
+mh.draws2 <- do.MHMCMC(total.iterations)
+mh.draws3 <- do.MHMCMC(total.iterations)
+```
+
+Turn it into an mcmc object so that we can use the coda package, and then look the autocorrelation
+```{r transform}
+mh.draws1 <- mcmc(mh.draws1) # turn into an MCMC object
+print(summary(mh.draws1))
+cat("\nRejection rate: ",rejectionRate(mh.draws1))
+autocorr.plot(mh.draws1,lag=150,main="Autocorrelation for mh.draws1")
+```
+
+These look quite good. The means are about right. The autocorrelation lasts 75-150 iterations.
+So, if we wanted to produce independent samples from this MVN, we should
+sample once every 150 or so iterations
+
+
+Compare multiple chains by combining them into what is known as an mcmc.list (a collection of mcmc outputs)
+```{r moreruns}
+mh.draws2 <- mcmc(mh.draws2) # turn into an MCMC object
+mh.draws3 <- mcmc(mh.draws3) # turn into an MCMC object
+
+mh.list <- mcmc.list(list(mh.draws1, mh.draws2, mh.draws3))
+```
+
+
+Now run the gelman test for a more formal check of convergence:
+```{r Gelman, echo=FALSE}
+cat("\nGelman test results follow...")
+print(gelman.diag(mh.list))
+gelman.plot(mh.list,main="Gelman plots")
+# look at the output
+plot(mh.draws1,main="Results for mh.draws1")
+plot(mh.draws2,main="Result for mh.draws2")
+acf(mh.draws2,main="Autocorrelation for mh.draws2",lag=150)
+#plot(as.matrix(mh.draws1))
+#plot(mh.draws1[,1])
+```
+
+These plots of sample against iteration look great. They are about as good as you will 
+ever see from an MCMC sampler.
+Note that there is a good deal of correlation, so sub-sampling will be needed if you 
+want to prpduce 'independent' samples.
+
+As a 'sanity check', we calculate the means of our samples to see what we got for 
+each of our posterior samples? Let's throw away the first 100 
+values as "burn-in" (because you should only sample once the process is stationary).
+
+```{r results}
+cat("\n Test data means:",mean(our.data[,1]),mean(our.data[,2]))
+summary(mh.draws1[-(1:100),])
+summary(mh.draws2[-(1:100),])
+summary(mh.draws3[-(1:100),])
+```
+
+Those look about right.
+
+
+
+What were the gelman diagnostics?:
+```{r}
+gelman.diag(mh.list)
+```
+
+
+
+Now repeat for the next bivariate normal:
+```{r}
+variance.matrix <- cbind(c(1, 1.5), c(1.5, 4))
+our.data<-rmvnorm(n=100,mean=mu.vector,sigma=variance.matrix)
+plot(our.data,main="sampled data")
+```
+
+This is more strongly correlated. Let's see how MCMC performs here.
+Again, we run it three times to enable comparison of results.
+```{r}
+mh.draws1 <- do.MHMCMC(total.iterations)
+mh.draws2 <- do.MHMCMC(total.iterations)
+mh.draws3 <- do.MHMCMC(total.iterations)
+
+mh.draws1 <- mcmc(mh.draws1) # turn into an MCMC object
+mh.draws2 <- mcmc(mh.draws2) # turn into an MCMC object
+mh.draws3 <- mcmc(mh.draws3) # turn into an MCMC object
+
+print(summary(mh.draws1)) # as an example
+cat("\nRejection rate for 1st run: ",rejectionRate(mh.draws1))
+cat("\nRejection rate for 2nd run: ",rejectionRate(mh.draws2))
+cat("\nRejection rate for 3rd run: ",rejectionRate(mh.draws3))
+
+mh.list <- mcmc.list(list(mh.draws1, mh.draws2, mh.draws3))
+```
+
+Let's run the gelman test again to check convergence:
+```{r, echo=FALSE}
+cat("\nGelman test results follow...")
+print(gelman.diag(mh.list))
+gelman.plot(mh.list,main="Gelman plots")
+# look at the output
+plot(mh.draws1,main="Results for mh.draws1")
+plot(mh.draws2,main="Result for mh.draws2")
+acf(mh.draws2,main="Autocorrelation for mh.draws2",lag=150)
+#plot(as.matrix(mh.draws1))
+#plot(mh.draws1[,1])
+```
+
+We can see  that these runs perhaps have a bit more correlation. Samples less than 100 iterations apart
+show some correlation. Longewr-lasting correlation is generally a sign that the process is mixing more poorly.
+However, these runs still pass Gelman's  convergence test. Even though we have more correlation, 
+so we would have to take samples that are further apart to  remove the correlation (a process
+known as "thinning"),the MCMC runs still appear to have reached stationarity.  
+
+
+Now for our final bivariate normal:
+```{r}
+variance.matrix <- cbind(c(1, 1.99), c(1.99, 4))
+our.data<-rmvnorm(n=100,mean=mu.vector,sigma=variance.matrix)
+plot(our.data,main="sampled data")
+```
+
+
+These data are extremely correlated. Let's see how MCMC performs here.
+Again, we run it three times to enable comparison of results.
+```{r}
+mh.draws1 <- do.MHMCMC(total.iterations)
+mh.draws2 <- do.MHMCMC(total.iterations)
+mh.draws3 <- do.MHMCMC(total.iterations)
+
+mh.draws1 <- mcmc(mh.draws1) # turn into an MCMC object
+mh.draws2 <- mcmc(mh.draws2) # turn into an MCMC object
+mh.draws3 <- mcmc(mh.draws3) # turn into an MCMC object
+
+print(summary(mh.draws1)) # as an example
+cat("\nRejection rate for 1st run: ",rejectionRate(mh.draws1))
+cat("\nRejection rate for 2nd run: ",rejectionRate(mh.draws2))
+cat("\nRejection rate for 3rd run: ",rejectionRate(mh.draws3))
+
+mh.list <- mcmc.list(list(mh.draws1, mh.draws2, mh.draws3))
+```
+
+The means are about right, but we can see that the rejection rate has become much higher (~84%).
+There is no magic number for the rejection rate, but a number around 80% is generally
+a sign that things will probably mix well. Here's the formal test:
+
+```{r, echo=FALSE}
+cat("\nGelman test results follow...")
+print(gelman.diag(mh.list))
+gelman.plot(mh.list,main="Gelman plots")
+# look at the output
+plot(mh.draws1,main="Results for mh.draws1")
+plot(mh.draws2,main="Result for mh.draws2")
+acf(mh.draws2,main="Autocorrelation for mh.draws2",lag=200)
+#plot(as.matrix(mh.draws1))
+#plot(mh.draws1[,1])
+```
+
+The point estimates for Gelman's shrinkage factor are not horrible (~1.03, where
+anything under 1.1 might be acceptable), but this is definitely a sign that things aren't
+mixing quite so well. We can see evidence of this in the acf plot, which shows correlation
+lasting well over 200 iterations.  So if you wanted to produce a large number of 
+'independent' samples, you would have to run this MCMC process for a long while.
+You can also see that the plots for mh.draws1(2&3), which are supposed to be normals, are
+much 'bumpier' than before. We can see the correlation better if we zoom in a bit on ther behavior of
+the MCMC process as it goes through the iterations. For example if we look at the first 1000 iterations:
+```{r}
+plot(mh.draws1[1:1000,1],type='l')
+```
+
+The problem here is that, because the parameters (the means) are so correlated, if you increase
+the value of one parameter you also need to increase the value of the other in order to stay in a 
+place in which the likelihood is reasonably high. The MCMC sampler we are using here doesn't do
+that because it proposes changes to the two mean parameters independently. 
+
+You could manually rewrite the code here to propose changes in a correlated way, but then that 
+would not work so well if the parameters were uncorrelated. These problems have  motivated the development 
+of something called "adaptive MCMC", which automatically adjusts to any correlation that it detects.
+We'll get to that next week, but you can explore it now if you want to get a taste by using the adaptMCMC R library.
+
+
+```{r tidyup,  echo=FALSE, warning=FALSE}
+# return graphics parameters to normal
+par(op)
+```
+
