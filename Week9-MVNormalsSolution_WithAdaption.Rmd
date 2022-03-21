@@ -185,7 +185,7 @@ Out of interest, let's look at the ACF for one of those chains (after we remove 
 acf(samp2a.coda[-(1:10000),],lag=100)
 ```
 
-MH-MCMC chains always have some degree of correlation (because you may stay in the sample place in the next iteration), but these look pretty good. Note that if you forget to remove the burn-in period when construcing the plot, things look much worse....
+MH-MCMC chains always have some degree of correlation (because you may stay in the same place in the next iteration), but these look pretty good. Note that if you forget to remove the burn-in period when construcing the plot, things look much worse....
 
 ```{r DontDoThis}
 acf(samp2a.coda,lag=100)
