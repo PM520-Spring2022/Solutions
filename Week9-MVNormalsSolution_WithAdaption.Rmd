@@ -1,0 +1,194 @@
+---
+title: "MVNormalsWithAdaption"
+author: "Paul M"
+date: "3/24/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This revisits the earlier example of MCMC in which we assume we have some bivariate normal data for which we want to estimate the means. Again, for convenience, for the purposes of this example, we will assume we know the variance-covariance structure.
+We again assume an (improper) uniform prior for the means.
+
+Firstly we repeat what we did before, but we will jump straight to the most correlated (and therefore hardest) case.
+
+First, load some libraries and do some other book-keeping:
+```{r prep}
+library(mvtnorm)
+library(mcmc)
+library(coda)
+
+# how many iterations do we want in our MH-MCMC process?
+total.iterations <- 20000
+
+op<-par() # preserve your current graphics parameter settings (we will be changing them later)
+
+set.seed(5436)  # to make our results reproducible
+```
+
+Now we generate some test data and plot it. We will do one case at a time, starting with the first ...
+```{r data}
+mu.vector <- c(3, 1)    # the vector of means for the multi-variate normal
+
+variance.matrix <- cbind(c(1, 1.99), c(1.99, 4))
+
+# Now generate one hundred samples from that distribution:
+our.data<-rmvnorm(n=500,mean=mu.vector,sigma=variance.matrix)
+plot(our.data,main="sampled data")
+mean(our.data[,1])
+mean(our.data[,2])
+```
+
+We will analyze this data using the adaptMCMC library
+
+```{r, echo=FALSE}
+library(adaptMCMC)
+library(coda)
+```
+
+And we need to define the function that returns the log un-normalized posterior density.
+Here that will just be the log of the correlated normal density
+```{r}
+lupost <- function(ThisMu){
+  return (sum(log(dmvnorm(our.data,mean=ThisMu,sigma=variance.matrix))))
+}
+```
+
+
+First we do it without adaption using this library. We'll do two runs so that we can calcluate convergence diagnostics, and we will start them from different places.
+
+```{r}
+samp.1a <- MCMC(lupost, n=total.iterations, init=c(0, 1), scale=c(1, 1),
+               adapt=FALSE)
+samp.1b <- MCMC(lupost, n=total.iterations, init=c(2, 2), scale=c(1, 1),
+               adapt=FALSE)
+```
+
+Let's have a look at the distribution of the mean parameters in first run after removing the first 1000 iterations (the 'burn-in')
+```{r}
+hist(samp.1a$samples[-1:-1000,1],main="Distn of first mean (truth was 3) - run 1")
+abline(v=3,lty=2,col="red")
+hist(samp.1a$samples[-1:-1000,2],main="Distn of second mean (truth was 1) - run 1")
+abline(v=1,lty=2,col="red")
+
+hist(samp.1b$samples[-1:-1000,1],main="Distn of first mean (truth was 3) - run 2")
+abline(v=3,lty=2,col="red")
+hist(samp.1b$samples[-1:-1000,2],main="Distn of second mean (truth was 1) - run 2")
+abline(v=1,lty=2,col="red")
+```
+
+These don't look great. Let's look at the time series showing the sampled values of the two means....
+```{r}
+plot(samp.1a$samples[-1:-1000,1],type='l',main="First mean")
+plot(samp.1a$samples[-1:-1000,2],type='l',main="Second mean")
+```
+
+You can see that it is struggling to mix well, as we saw before. The acceptance rates were....
+```{r}
+(samp.1a$acceptance.rate)
+(samp.1b$acceptance.rate)
+```
+
+These are too low. For completeness, let's also calculate the convergence diagnostics:
+```{r}
+samp1a.coda <- convert.to.coda(samp.1a)
+samp1b.coda <- convert.to.coda(samp.1b)
+bothsamps1<-mcmc.list(samp1a.coda,samp1b.coda)
+gelman.plot(bothsamps1,main="No adaptation")
+print(gelman.diag(bothsamps1))
+```
+
+These diagnostics are are not good. What was our effective sample size?...
+```{r}
+effectiveSize(bothsamps1)
+```
+
+So, out of 20K iterations we have around 20-30 effectively independent samples, which is a pretty poor return on our investment.
+
+Let's see if adaptive MCMC can do better.
+We will target an acceptance rate of 20%.
+
+```{r}
+samp.2a <- MCMC(lupost, n=total.iterations, init=c(0, 1), scale=c(1, 1),
+               adapt=TRUE, acc.rate=0.2)
+samp.2b <- MCMC(lupost, n=total.iterations, init=c(2, 2), scale=c(1, 1),
+               adapt=TRUE, acc.rate=0.2)
+```
+
+You will notice that it runs considerably more slowly when we turn adaption on.
+Let's again look at the distribution of the mean parameters in first run
+```{r}
+hist(samp.2a$samples[-1:-1000,1],main="Distn of first mean (truth was 3) - run 1",breaks=50)
+abline(v=3,lty=2,col="red")
+hist(samp.2a$samples[-1:-1000,2],main="Distn of second mean (truth was 1) - run 1",breaks=50)
+abline(v=1,lty=2,col="red")
+
+hist(samp.2b$samples[-1:-1000,1],main="Distn of first mean (truth was 3) - run 2",breaks=50)
+abline(v=3,lty=2,col="red")
+hist(samp.2b$samples[-1:-1000,2],main="Distn of second mean (truth was 1) - run 2",breaks=50)
+abline(v=1,lty=2,col="red")
+```
+
+Let's look at the time series showing the sampled values of the two means, to get a sense of how it is performing and whether we should remove a burn-in period.
+```{r}
+plot(samp.2a$samples[,1],type='l',main="First mean")
+plot(samp.2a$samples[,2],type='l',main="Second mean")
+```
+
+You can see that there is a bit of a burn in period, which we should remove before using the samples. Let's redo the histograms after removing the first 10K iterations.
+
+```{r}
+hist(samp.2a$samples[-(1:10000),1],main="Distn of first mean (truth was 3) - run 1")
+abline(v=3,lty=2,col="red")
+hist(samp.2a$samples[-(1:10000),2],main="Distn of second mean (truth was 1) - run 1")
+abline(v=1,lty=2,col="red")
+
+hist(samp.2b$samples[-(1:10000),1],main="Distn of first mean (truth was 3) - run 2")
+abline(v=3,lty=2,col="red")
+hist(samp.2b$samples[-(1:10000),2],main="Distn of second mean (truth was 1) - run 2")
+abline(v=1,lty=2,col="red")
+```
+
+These look fine, except they are not quite in the correct place. However, we only generated 500 datapoints, and recall that the means of the generated data were ~ 2.93 and 0.87, so these histrograms look like they are in exactly the correct place. (i.e. the place best supported by the data.)
+
+The acceptance rates were....
+```{r}
+(samp.2a$acceptance.rate)
+(samp.2b$acceptance.rate)
+```
+
+Which roughly hits the target of 0.2. The convergence diagnostics are:
+```{r}
+samp2a.coda <- convert.to.coda(samp.2a)
+samp2b.coda <- convert.to.coda(samp.2b)
+bothsamps2 <- mcmc.list(samp2a.coda,samp2b.coda)
+gelman.plot(bothsamps2,main="With adaptation")
+print(gelman.diag(bothsamps2))
+```
+
+Which is perfect. 
+
+
+What was our effective sample size?...
+```{r}
+effectiveSize(bothsamps2)
+```
+
+
+Which is a great improvement (at the cost of longer run time). 
+
+Out of interest, let's look at the ACF for one of those chains (after we remove the burn-in):
+
+```{r}
+acf(samp2a.coda[-(1:10000),],lag=100)
+```
+
+MH-MCMC chains always have some degree of correlation (because you may stay in the same place in the next iteration), but these look pretty good. Note that if you forget to remove the burn-in period when construcing the plot, things look much worse....
+
+```{r DontDoThis}
+acf(samp2a.coda,lag=100)
+```
+
+
