@@ -1,0 +1,80 @@
+---
+title: "MyGamma2"
+author: "Paul M"
+date: "3/22/2019"
+output: html_document
+---
+
+This is an example solution to the problem of simulating Gamma random variables using a rejection method. It is taken from the spuRs package, which provides functions and datasets from Jones, O.D., R. Maillardet, and A.P. Robinson. 2014. An Introduction to Scientific Programming and Simulation, Using R. 2nd Ed. Chapman And Hall/CRC.
+
+First we define the functions we will need...
+
+```{r defns, echo=TRUE}
+
+# sim a gamma(lambda, m) rv using rejection with an exp envelope
+gamma.sim <- function(lambda, m) {
+  # assumes m > 1 and lambda > 0
+  f <- function(x) lambda^m*x^(m-1)*exp(-lambda*x)/gamma(m)  # gamma density
+  h <- function(x) lambda/m*exp(-lambda/m*x)   # exponential density
+  k <- m^m*exp(1-m)/gamma(m)
+  while (TRUE) {
+    X <- -log(runif(1))*m/lambda  # generate X from an exponential distn using inversion method
+    Y <- runif(1, 0, k*h(X))   # test it for rejection
+    if (Y < f(X)) return(X)
+  }
+}
+
+# sim a gamma(lambda, m) rv using rejection with a uniform envelope
+gamma.sim.unif <- function(lambda, m) {
+  # assumes m > 1 and lambda > 0
+  f <- function(x) lambda^m*x^(m-1)*exp(-lambda*x)/gamma(m) # gamma density
+  h <- function(x) 1  # uniform density
+  k <- 1  # arbitrary constant
+  while (TRUE) {
+    X <- runif(1,0,15)   # generate x from uniform density
+    Y <- runif(1, 0, k*h(X))  # test it for rejection
+    if (Y < f(X)) return(X)
+  }
+}
+```
+
+Define global variables...
+
+```{r globals}
+# Now run the simulations
+set.seed(1998)
+n <- 10000
+g <- rep(0, n)
+h <- rep(0, n)
+```
+
+And now run the simulations using both methods. First we do it using uniform distribution for the envelope.
+
+```{r unif}
+ptm <- proc.time()[3]
+for (i in 1:n) g[i] <- gamma.sim.unif(1, 2)
+cat("\nTime taken to generate samples using uniform envelope: ",proc.time()[3]-ptm," seconds")
+hist(g, breaks=20, freq=F, xlab="x", ylab="pdf f(x)",
+  main="theoretical and simulated gamma(1, 2) density - uniform env.")
+x <- seq(0, max(g), .1)
+lines(x, dgamma(x, 2, 1))
+```
+
+And now we do it using exponential distribution for the envelope
+
+```{r expo}
+ptm <- proc.time()[3]
+for (i in 1:n) h[i] <- gamma.sim(1, 2)
+cat("\nTime taken to generate samples using exponential envelope: ",proc.time()[3]-ptm," seconds")
+hist(h, breaks=20, freq=F, xlab="x", ylab="pdf f(x)",
+     main="theoretical and simulated gamma(1, 2) density - expontl env")
+x <- seq(0, max(g), .1)
+lines(x, dgamma(x, 2, 1))
+```
+
+Finally,let's check they agree with each other
+
+```{r DidItWork}
+qqplot(g,h,pch='.',cex=4)
+abline(0,1,col='red')
+```
