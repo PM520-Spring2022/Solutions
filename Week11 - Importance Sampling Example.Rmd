@@ -1,0 +1,48 @@
+---
+title: "ImportanceSamplingExample"
+author: "Paul M"
+date: "4/8/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Importance Sampling Example
+
+In this example we will use a sample of exponential random variables to estimate the mean of a Gamma distribution.
+First we generate our exponential rvs:
+
+```{r Setup}
+HowMany <- 50000  # The number of rvs we will sample
+MyExpos <- rexp(HowMany,rate=1) # The expo rvs
+```
+
+Now we calculate the importance sampling weight for each sampled value
+
+```{r ISweights}
+ImportanceSamplingWeights <- dgamma(MyExpos,shape=2,rate=1)/dexp(MyExpos,rate=1)
+```
+
+Now calculate the mean and compare it to the mean of a similar sample of Gamma rvs. Remember we have to weight each sampled value by its importance samping weight, and then normalize by the sum of those weights, when calculating the mean:
+
+```{r compare}
+(EstimatedMeanFromExpos <- sum(MyExpos*ImportanceSamplingWeights)/sum(ImportanceSamplingWeights))
+
+MyGammas <- rgamma(HowMany,shape=2,rate=1)
+(EstimatedMeanFromGammas <- mean(MyGammas))
+
+```
+
+They seem to agree well. Let's construct a weighted histogram to compare the samples:
+
+```{r plots}
+library(weights)
+par(mfrow=c(3, 1)) # 2x2 plots
+wtd.hist(MyGammas,main="The Gamma rvs",breaks=50,xlim=c(0,10))  # by default, the weights are set to 1
+wtd.hist(MyExpos,weight=ImportanceSamplingWeights,main="Expos with IS weights",breaks=50,xlim=c(0,10))  # by defaults, the weights are set to 1
+wtd.hist(MyExpos, main="UnweightedExpos",breaks=50,xlim=c(0,10))  # Now uses the weights given by wgt
+par(mfrow=c(1, 1)) # go back to a single plot 
+
+
+```
